@@ -1,4 +1,3 @@
-using Duende.IdentityServer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.UI.Services;
 using Microsoft.EntityFrameworkCore;
@@ -12,7 +11,7 @@ internal static class HostingExtensions
 {
     public static WebApplication ConfigureServices(this WebApplicationBuilder builder)
     {
-        builder.Services.AddMvc();
+        builder.Services.AddRazorPages();
 
         builder.Services.AddTransient<IEmailSender, DummyEmailSender>();
 
@@ -47,26 +46,26 @@ internal static class HostingExtensions
                 options.Events.RaiseInformationEvents = true;
                 options.Events.RaiseFailureEvents = true;
                 options.Events.RaiseSuccessEvents = true;
-
-                // see https://docs.duendesoftware.com/identityserver/v6/fundamentals/resources/
+                //https://docs.duendesoftware.com/identityserver/fundamentals/resources/api-scopes/#adding-user-claims
                 options.EmitStaticAudienceClaim = true;
             })
             .AddInMemoryIdentityResources(Config.IdentityResources)
             .AddInMemoryApiScopes(Config.ApiScopes)
             .AddInMemoryApiResources(Config.ApiResources)
             .AddInMemoryClients(Config.Clients)
-            .AddAspNetIdentity<ApplicationUser>();
-            //.AddSigningCredential(new X509Certificate2("IDP.pfx"));
+            .AddAspNetIdentity<ApplicationUser>()
+            .AddLicenseSummary();
+        //.AddSigningCredential(new X509Certificate2("IDP.pfx"));
 
         builder.Services.AddAuthentication();
 
         return builder.Build();
     }
-    
+
     public static WebApplication ConfigurePipeline(this WebApplication app)
-    { 
+    {
         app.UseSerilogRequestLogging();
-    
+
         if (app.Environment.IsDevelopment())
         {
             app.UseDeveloperExceptionPage();
@@ -77,21 +76,17 @@ internal static class HostingExtensions
         app.UseIdentityServer();
         app.UseAuthorization();
 
-        app.UseEndpoints(endpoints =>
-        {
-            endpoints.MapControllers();
-            endpoints.MapDefaultControllerRoute();
-            endpoints.MapRazorPages();
-        });
+        app.MapRazorPages()
+            .RequireAuthorization();
 
         return app;
     }
+}
 
-    public class DummyEmailSender : IEmailSender
+public class DummyEmailSender : IEmailSender
+{
+    public Task SendEmailAsync(string email, string subject, string htmlMessage)
     {
-        public Task SendEmailAsync(string email, string subject, string htmlMessage)
-        {
-            return Task.CompletedTask;
-        }
+        return Task.CompletedTask;
     }
 }

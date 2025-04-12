@@ -5,7 +5,6 @@ using Duende.IdentityServer.Stores;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
-using System.ComponentModel.DataAnnotations;
 
 namespace RGF.Demo.IDP.Pages.Grants
 {
@@ -29,7 +28,7 @@ namespace RGF.Demo.IDP.Pages.Grants
             _events = events;
         }
 
-        public ViewModel View { get; set; }
+        public ViewModel View { get; set; } = default!;
 
         public async Task OnGet()
         {
@@ -67,13 +66,13 @@ namespace RGF.Demo.IDP.Pages.Grants
         }
 
         [BindProperty]
-        [Required]
-        public string ClientId { get; set; }
+        public string? ClientId { get; set; }
 
         public async Task<IActionResult> OnPost()
         {
             await _interaction.RevokeUserConsentAsync(ClientId);
             await _events.RaiseAsync(new GrantsRevokedEvent(User.GetSubjectId(), ClientId));
+            Telemetry.Metrics.GrantsRevoked(ClientId);
 
             return RedirectToPage("/Grants/Index");
         }

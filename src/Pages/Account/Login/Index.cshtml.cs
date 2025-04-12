@@ -1,3 +1,4 @@
+using Duende.IdentityServer;
 using Duende.IdentityServer.Events;
 using Duende.IdentityServer.Models;
 using Duende.IdentityServer.Services;
@@ -22,10 +23,10 @@ namespace RGF.Demo.IDP.Pages.Login
         private readonly IAuthenticationSchemeProvider _schemeProvider;
         private readonly IIdentityProviderStore _identityProviderStore;
 
-        public ViewModel View { get; set; }
+        public ViewModel View { get; set; } = default!;
 
         [BindProperty]
-        public InputModel Input { get; set; }
+        public InputModel Input { get; set; } = default!;
 
         public Index(
             IIdentityServerInteractionService interaction,
@@ -43,7 +44,7 @@ namespace RGF.Demo.IDP.Pages.Login
             _events = events;
         }
 
-        public async Task<IActionResult> OnGet(string returnUrl)
+        public async Task<IActionResult> OnGet(string? returnUrl)
         {
             await BuildModelAsync(returnUrl);
 
@@ -66,6 +67,9 @@ namespace RGF.Demo.IDP.Pages.Login
             {
                 if (context != null)
                 {
+                    // This "can't happen", because if the ReturnUrl was null, then the context would be null
+                    ArgumentNullException.ThrowIfNull(Input.ReturnUrl, nameof(Input.ReturnUrl));
+
                     // if the user cancels, send a result back into IdentityServer as if they 
                     // denied the consent (even if this client does not require consent).
                     // this will send back an access denied OIDC error response to the client.
@@ -79,7 +83,7 @@ namespace RGF.Demo.IDP.Pages.Login
                         return this.LoadingPage(Input.ReturnUrl);
                     }
 
-                    return Redirect(Input.ReturnUrl);
+                    return Redirect(Input.ReturnUrl ?? "~/");
                 }
                 else
                 {
@@ -90,14 +94,21 @@ namespace RGF.Demo.IDP.Pages.Login
 
             if (ModelState.IsValid)
             {
-                var result = await _signInManager.PasswordSignInAsync(Input.Username, Input.Password, Input.RememberLogin, lockoutOnFailure: true);
+                // Only remember login if allowed
+                var rememberLogin = LoginOptions.AllowRememberLogin && Input.RememberLogin;
+
+                var result = await _signInManager.PasswordSignInAsync(Input.Username!, Input.Password!, isPersistent: rememberLogin, lockoutOnFailure: true);
                 if (result.Succeeded)
                 {
-                    var user = await _userManager.FindByNameAsync(Input.Username);
-                    await _events.RaiseAsync(new UserLoginSuccessEvent(user.UserName, user.Id, user.UserName, clientId: context?.Client.ClientId));
+                    var user = await _userManager.FindByNameAsync(Input.Username!);
+                    await _events.RaiseAsync(new UserLoginSuccessEvent(user!.UserName, user.Id, user.UserName, clientId: context?.Client.ClientId));
+                    Telemetry.Metrics.UserLogin(context?.Client.ClientId, IdentityServerConstants.LocalIdentityProvider);
 
                     if (context != null)
                     {
+                        // This "can't happen", because if the ReturnUrl was null, then the context would be null
+                        ArgumentNullException.ThrowIfNull(Input.ReturnUrl, nameof(Input.ReturnUrl));
+
                         if (context.IsNativeClient())
                         {
                             // The client is native, so this change in how to
@@ -106,7 +117,7 @@ namespace RGF.Demo.IDP.Pages.Login
                         }
 
                         // we can trust model.ReturnUrl since GetAuthorizationContextAsync returned non-null
-                        return Redirect(Input.ReturnUrl);
+                        return Redirect(Input.ReturnUrl ?? "~/");
                     }
 
                     // request for a local page
@@ -121,11 +132,13 @@ namespace RGF.Demo.IDP.Pages.Login
                     else
                     {
                         // user might have clicked on a malicious link - should be logged
-                        throw new Exception("invalid return URL");
+                        throw new ArgumentException("invalid return URL");
                     }
                 }
 
-                await _events.RaiseAsync(new UserLoginFailureEvent(Input.Username, "invalid credentials", clientId: context?.Client.ClientId));
+                const string error = "invalid credentials";
+                await _events.RaiseAsync(new UserLoginFailureEvent(Input.Username, error, clientId: context?.Client.ClientId));
+                Telemetry.Metrics.UserLoginFailure(context?.Client.ClientId, IdentityServerConstants.LocalIdentityProvider, error);
                 ModelState.AddModelError(string.Empty, LoginOptions.InvalidCredentialsErrorMessage);
             }
 
@@ -134,7 +147,7 @@ namespace RGF.Demo.IDP.Pages.Login
             return Page();
         }
 
-        private async Task BuildModelAsync(string returnUrl)
+        private async Task BuildModelAsync(string? returnUrl)
         {
             Input = new InputModel
             {
@@ -142,21 +155,25 @@ namespace RGF.Demo.IDP.Pages.Login
             };
 
             var context = await _interaction.GetAuthorizationContextAsync(returnUrl);
-            if (context?.IdP != null && await _schemeProvider.GetSchemeAsync(context.IdP) != null)
+            if (context?.IdP != null)
             {
-                var local = context.IdP == Duende.IdentityServer.IdentityServerConstants.LocalIdentityProvider;
-
-                // this is meant to short circuit the UI and only trigger the one external IdP
-                View = new ViewModel
+                var scheme = await _schemeProvider.GetSchemeAsync(context.IdP);
+                if (scheme != null)
                 {
-                    EnableLocalLogin = local,
-                };
+                    var local = context.IdP == Duende.IdentityServer.IdentityServerConstants.LocalIdentityProvider;
 
-                Input.Username = context?.LoginHint;
+                    // this is meant to short circuit the UI and only trigger the one external IdP
+                    View = new ViewModel
+                    {
+                        EnableLocalLogin = local,
+                    };
 
-                if (!local)
-                {
-                    View.ExternalProviders = new[] { new ViewModel.ExternalProvider { AuthenticationScheme = context.IdP } };
+                    Input.Username = context.LoginHint;
+
+                    if (!local)
+                    {
+                        View.ExternalProviders = [new ViewModel.ExternalProvider(authenticationScheme: context.IdP, displayName: scheme.DisplayName)];
+                    }
                 }
 
                 return;
@@ -167,19 +184,19 @@ namespace RGF.Demo.IDP.Pages.Login
             var providers = schemes
                 .Where(x => x.DisplayName != null)
                 .Select(x => new ViewModel.ExternalProvider
-                {
-                    DisplayName = x.DisplayName ?? x.Name,
-                    AuthenticationScheme = x.Name
-                }).ToList();
+                (
+                    authenticationScheme: x.Name,
+                    displayName: x.DisplayName ?? x.Name
+                )).ToList();
 
-            var dyanmicSchemes = (await _identityProviderStore.GetAllSchemeNamesAsync())
+            var dynamicSchemes = (await _identityProviderStore.GetAllSchemeNamesAsync())
                 .Where(x => x.Enabled)
                 .Select(x => new ViewModel.ExternalProvider
-                {
-                    AuthenticationScheme = x.Scheme,
-                    DisplayName = x.DisplayName
-                });
-            providers.AddRange(dyanmicSchemes);
+                (
+                    authenticationScheme: x.Scheme,
+                    displayName: x.DisplayName ?? x.Scheme
+                ));
+            providers.AddRange(dynamicSchemes);
 
 
             var allowLocal = true;
@@ -187,7 +204,7 @@ namespace RGF.Demo.IDP.Pages.Login
             if (client != null)
             {
                 allowLocal = client.EnableLocalLogin;
-                if (client.IdentityProviderRestrictions != null && client.IdentityProviderRestrictions.Any())
+                if (client.IdentityProviderRestrictions != null && client.IdentityProviderRestrictions.Count != 0)
                 {
                     providers = providers.Where(provider => client.IdentityProviderRestrictions.Contains(provider.AuthenticationScheme)).ToList();
                 }

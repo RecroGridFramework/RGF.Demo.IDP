@@ -1,4 +1,4 @@
-﻿using IdentityModel;
+using Duende.IdentityModel;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using RGF.Demo.IDP.Data;
@@ -14,7 +14,7 @@ namespace RGF.Demo.IDP
         {
             using (var scope = app.Services.GetRequiredService<IServiceScopeFactory>().CreateScope())
             {
-                var context = scope.ServiceProvider.GetService<ApplicationDbContext>();
+                var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
                 context.Database.Migrate();
 
                 var userMgr = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
@@ -24,7 +24,7 @@ namespace RGF.Demo.IDP
                     alice = new ApplicationUser
                     {
                         UserName = "alice",
-                        Email = "AliceSmith@email.com",
+                        Email = "AliceSmith@example.com",
                         EmailConfirmed = true,
                     };
                     var result = userMgr.CreateAsync(alice, "Pass123$").Result;
@@ -34,11 +34,11 @@ namespace RGF.Demo.IDP
                     }
 
                     result = userMgr.AddClaimsAsync(alice, new Claim[]{
-                            new Claim(JwtClaimTypes.Name, "Alice Smith"),
-                            new Claim(JwtClaimTypes.GivenName, "Alice"),
-                            new Claim(JwtClaimTypes.FamilyName, "Smith"),
-                            new Claim(JwtClaimTypes.WebSite, "http://alice.com"),
-                        }).Result;
+                                new Claim(JwtClaimTypes.Name, "Alice Smith"),
+                                new Claim(JwtClaimTypes.GivenName, "Alice"),
+                                new Claim(JwtClaimTypes.FamilyName, "Smith"),
+                                new Claim(JwtClaimTypes.WebSite, "http://alice.example.com"),
+                            }).Result;
                     if (!result.Succeeded)
                     {
                         throw new Exception(result.Errors.First().Description);
@@ -56,7 +56,7 @@ namespace RGF.Demo.IDP
                     bob = new ApplicationUser
                     {
                         UserName = "bob",
-                        Email = "BobSmith@email.com",
+                        Email = "BobSmith@example.com",
                         EmailConfirmed = true
                     };
                     var result = userMgr.CreateAsync(bob, "Pass123$").Result;
@@ -66,12 +66,12 @@ namespace RGF.Demo.IDP
                     }
 
                     result = userMgr.AddClaimsAsync(bob, new Claim[]{
-                            new Claim(JwtClaimTypes.Name, "Bob Smith"),
-                            new Claim(JwtClaimTypes.GivenName, "Bob"),
-                            new Claim(JwtClaimTypes.FamilyName, "Smith"),
-                            new Claim(JwtClaimTypes.WebSite, "http://bob.com"),
-                            new Claim("location", "somewhere")
-                        }).Result;
+                                new Claim(JwtClaimTypes.Name, "Bob Smith"),
+                                new Claim(JwtClaimTypes.GivenName, "Bob"),
+                                new Claim(JwtClaimTypes.FamilyName, "Smith"),
+                                new Claim(JwtClaimTypes.WebSite, "http://bob.example.com"),
+                                new Claim("location", "somewhere")
+                            }).Result;
                     if (!result.Succeeded)
                     {
                         throw new Exception(result.Errors.First().Description);

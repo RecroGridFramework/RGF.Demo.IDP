@@ -9,12 +9,12 @@ namespace RGF.Demo.IDP.Pages.Diagnostics
     [Authorize]
     public class Index : PageModel
     {
-        public ViewModel View { get; set; }
+        public ViewModel View { get; set; } = default!;
 
         public async Task<IActionResult> OnGet()
         {
-            var localAddresses = new string[] { "127.0.0.1", "::1", HttpContext.Connection.LocalIpAddress.ToString() };
-            if (!localAddresses.Contains(HttpContext.Connection.RemoteIpAddress.ToString()))
+            //Replace with an authorization policy check
+            if (HttpContext.Connection.IsRemote())
             {
                 return NotFound();
             }

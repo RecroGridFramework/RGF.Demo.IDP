@@ -17,15 +17,15 @@ namespace RGF.Demo.IDP.Pages.ExternalLogin
             _interactionService = interactionService;
         }
 
-        public IActionResult OnGet(string scheme, string returnUrl)
+        public IActionResult OnGet(string scheme, string? returnUrl)
         {
             if (string.IsNullOrEmpty(returnUrl)) returnUrl = "~/";
 
-            // validate returnUrl - either it is a valid OIDC URL or back to a local page
+            // Abort on incorrect returnUrl - it is neither a local url nor a valid OIDC url.
             if (Url.IsLocalUrl(returnUrl) == false && _interactionService.IsValidReturnUrl(returnUrl) == false)
             {
                 // user might have clicked on a malicious link - should be logged
-                throw new Exception("invalid return URL");
+                throw new ArgumentException("invalid return URL");
             }
 
             // start challenge and roundtrip the return URL and scheme 
@@ -34,10 +34,10 @@ namespace RGF.Demo.IDP.Pages.ExternalLogin
                 RedirectUri = Url.Page("/externallogin/callback"),
 
                 Items =
-            {
-                { "returnUrl", returnUrl },
-                { "scheme", scheme },
-            }
+                {
+                    { "returnUrl", returnUrl },
+                    { "scheme", scheme },
+                }
             };
 
             return Challenge(props, scheme);

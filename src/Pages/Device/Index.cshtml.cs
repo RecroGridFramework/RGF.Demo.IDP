@@ -33,26 +33,21 @@ namespace RGF.Demo.IDP.Pages.Device
             _logger = logger;
         }
 
-        public ViewModel View { get; set; }
+        public ViewModel View { get; set; } = default!;
 
         [BindProperty]
-        public InputModel Input { get; set; }
+        public InputModel Input { get; set; } = default!;
 
-        public async Task<IActionResult> OnGet(string userCode)
+        public async Task<IActionResult> OnGet(string? userCode)
         {
-            if (String.IsNullOrWhiteSpace(userCode))
+            if (string.IsNullOrWhiteSpace(userCode))
             {
-                View = new ViewModel();
-                Input = new InputModel();
                 return Page();
             }
 
-            View = await BuildViewModelAsync(userCode);
-            if (View == null)
+            if (!await SetViewModelAsync(userCode))
             {
                 ModelState.AddModelError("", DeviceOptions.InvalidUserCode);
-                View = new ViewModel();
-                Input = new InputModel();
                 return Page();
             }
 
@@ -66,10 +61,10 @@ namespace RGF.Demo.IDP.Pages.Device
 
         public async Task<IActionResult> OnPost()
         {
-            var request = await _interaction.GetAuthorizationContextAsync(Input.UserCode);
+            var request = await _interaction.GetAuthorizationContextAsync(Input.UserCode ?? throw new ArgumentNullException(nameof(Input.UserCode)));
             if (request == null) return RedirectToPage("/Home/Error/Index");
 
-            ConsentResponse grantedConsent = null;
+            ConsentResponse? grantedConsent = null;
 
             // user clicked 'no' - send back the standard 'access_denied' response
             if (Input.Button == "no")
@@ -81,12 +76,13 @@ namespace RGF.Demo.IDP.Pages.Device
 
                 // emit event
                 await _events.RaiseAsync(new ConsentDeniedEvent(User.GetSubjectId(), request.Client.ClientId, request.ValidatedResources.RawScopeValues));
+                Telemetry.Metrics.ConsentDenied(request.Client.ClientId, request.ValidatedResources.ParsedScopes.Select(s => s.ParsedName));
             }
             // user clicked 'yes' - validate the data
             else if (Input.Button == "yes")
             {
                 // if the user consented to some scope, build the response model
-                if (Input.ScopesConsented != null && Input.ScopesConsented.Any())
+                if (Input.ScopesConsented.Any())
                 {
                     var scopes = Input.ScopesConsented;
                     if (ConsentOptions.EnableOfflineAccess == false)
@@ -103,6 +99,9 @@ namespace RGF.Demo.IDP.Pages.Device
 
                     // emit event
                     await _events.RaiseAsync(new ConsentGrantedEvent(User.GetSubjectId(), request.Client.ClientId, request.ValidatedResources.RawScopeValues, grantedConsent.ScopesValuesConsented, grantedConsent.RememberConsent));
+                    Telemetry.Metrics.ConsentGranted(request.Client.ClientId, grantedConsent.ScopesValuesConsented, grantedConsent.RememberConsent);
+                    var denied = request.ValidatedResources.ParsedScopes.Select(s => s.ParsedName).Except(grantedConsent.ScopesValuesConsented);
+                    Telemetry.Metrics.ConsentDenied(request.Client.ClientId, denied);
                 }
                 else
                 {
@@ -124,23 +123,30 @@ namespace RGF.Demo.IDP.Pages.Device
             }
 
             // we need to redisplay the consent UI
-            View = await BuildViewModelAsync(Input.UserCode, Input);
+            if (!await SetViewModelAsync(Input.UserCode))
+            {
+                return RedirectToPage("/Home/Error/Index");
+            }
             return Page();
         }
 
 
-        private async Task<ViewModel> BuildViewModelAsync(string userCode, InputModel model = null)
+        private async Task<bool> SetViewModelAsync(string userCode)
         {
             var request = await _interaction.GetAuthorizationContextAsync(userCode);
             if (request != null)
             {
-                return CreateConsentViewModel(model, request);
+                View = CreateConsentViewModel(request);
+                return true;
             }
-
-            return null;
+            else
+            {
+                View = new ViewModel();
+                return false;
+            }
         }
 
-        private ViewModel CreateConsentViewModel(InputModel model, DeviceFlowAuthorizationRequest request)
+        private ViewModel CreateConsentViewModel(DeviceFlowAuthorizationRequest request)
         {
             var vm = new ViewModel
             {
@@ -150,7 +156,7 @@ namespace RGF.Demo.IDP.Pages.Device
                 AllowRememberConsent = request.Client.AllowRememberConsent
             };
 
-            vm.IdentityScopes = request.ValidatedResources.Resources.IdentityResources.Select(x => CreateScopeViewModel(x, model == null || model.ScopesConsented?.Contains(x.Name) == true)).ToArray();
+            vm.IdentityScopes = request.ValidatedResources.Resources.IdentityResources.Select(x => CreateScopeViewModel(x, Input == null || Input.ScopesConsented.Contains(x.Name))).ToArray();
 
             var apiScopes = new List<ScopeViewModel>();
             foreach (var parsedScope in request.ValidatedResources.ParsedScopes)
@@ -158,20 +164,20 @@ namespace RGF.Demo.IDP.Pages.Device
                 var apiScope = request.ValidatedResources.Resources.FindApiScope(parsedScope.ParsedName);
                 if (apiScope != null)
                 {
-                    var scopeVm = CreateScopeViewModel(parsedScope, apiScope, model == null || model.ScopesConsented?.Contains(parsedScope.RawValue) == true);
+                    var scopeVm = CreateScopeViewModel(parsedScope, apiScope, Input == null || Input.ScopesConsented.Contains(parsedScope.RawValue));
                     apiScopes.Add(scopeVm);
                 }
             }
             if (DeviceOptions.EnableOfflineAccess && request.ValidatedResources.Resources.OfflineAccess)
             {
-                apiScopes.Add(GetOfflineAccessScope(model == null || model.ScopesConsented?.Contains(Duende.IdentityServer.IdentityServerConstants.StandardScopes.OfflineAccess) == true));
+                apiScopes.Add(GetOfflineAccessScope(Input == null || Input.ScopesConsented.Contains(Duende.IdentityServer.IdentityServerConstants.StandardScopes.OfflineAccess)));
             }
             vm.ApiScopes = apiScopes;
 
             return vm;
         }
 
-        private ScopeViewModel CreateScopeViewModel(IdentityResource identity, bool check)
+        private static ScopeViewModel CreateScopeViewModel(IdentityResource identity, bool check)
         {
             return new ScopeViewModel
             {
@@ -184,7 +190,7 @@ namespace RGF.Demo.IDP.Pages.Device
             };
         }
 
-        public ScopeViewModel CreateScopeViewModel(ParsedScopeValue parsedScopeValue, ApiScope apiScope, bool check)
+        private static ScopeViewModel CreateScopeViewModel(ParsedScopeValue parsedScopeValue, ApiScope apiScope, bool check)
         {
             return new ScopeViewModel
             {
@@ -198,7 +204,7 @@ namespace RGF.Demo.IDP.Pages.Device
             };
         }
 
-        private ScopeViewModel GetOfflineAccessScope(bool check)
+        private static ScopeViewModel GetOfflineAccessScope(bool check)
         {
             return new ScopeViewModel
             {

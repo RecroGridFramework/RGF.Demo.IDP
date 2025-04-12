@@ -1,6 +1,3 @@
-// Copyright (c) Duende Software. All rights reserved.
-// See LICENSE in the project root for license information.
-
 using Duende.IdentityServer.Models;
 using Duende.IdentityServer.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -13,7 +10,7 @@ namespace RGF.Demo.IDP.Pages.Ciba
     [SecurityHeaders]
     public class IndexModel : PageModel
     {
-        public BackchannelUserLoginRequest LoginRequest { get; set; }
+        public BackchannelUserLoginRequest LoginRequest { get; set; } = default!;
 
         private readonly IBackchannelAuthenticationInteractionService _backchannelAuthenticationInteraction;
         private readonly ILogger<IndexModel> _logger;
@@ -26,11 +23,15 @@ namespace RGF.Demo.IDP.Pages.Ciba
 
         public async Task<IActionResult> OnGet(string id)
         {
-            LoginRequest = await _backchannelAuthenticationInteraction.GetLoginRequestByInternalIdAsync(id);
-            if (LoginRequest == null)
+            var result = await _backchannelAuthenticationInteraction.GetLoginRequestByInternalIdAsync(id);
+            if (result == null)
             {
-                _logger.LogWarning("Invalid backchannel login id {id}", id);
+                _logger.InvalidBackchannelLoginId(id);
                 return RedirectToPage("/Home/Error/Index");
+            }
+            else
+            {
+                LoginRequest = result;
             }
 
             return Page();

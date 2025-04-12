@@ -7,5 +7,5 @@ Additional information: [RecroGrid Framework Demo](https://github.com/RecroGridF
 
 ## Related projects
 
-- [RecroGrid Framework](https://RecroGrid.com/)
+- [RecroGrid Framework](https://RecroGridFramework.com/)
 - [Duende IdentityServer](https://duendesoftware.com/)

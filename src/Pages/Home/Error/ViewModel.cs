@@ -1,6 +1,3 @@
-﻿// Copyright (c) Duende Software. All rights reserved.
-// See LICENSE in the project root for license information.
-
 using Duende.IdentityServer.Models;
 
 namespace RGF.Demo.IDP.Pages.Error
@@ -16,6 +13,6 @@ namespace RGF.Demo.IDP.Pages.Error
             Error = new ErrorMessage { Error = error };
         }
 
-        public ErrorMessage Error { get; set; }
+        public ErrorMessage? Error { get; set; }
     }
 }

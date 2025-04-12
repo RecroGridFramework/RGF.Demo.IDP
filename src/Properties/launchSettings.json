@@ -2,7 +2,6 @@
   "profiles": {
     "SelfHost": {
       "commandName": "Project",
-      "commandLineArgs": "/seed",
       "launchBrowser": false,
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"

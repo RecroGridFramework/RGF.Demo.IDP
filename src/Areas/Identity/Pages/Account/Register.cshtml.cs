@@ -15,6 +15,8 @@ using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Logging;
 using RGF.Demo.IDP.Models;
 
+#nullable disable
+
 namespace RGF.Demo.IDP.Areas.Identity.Pages.Account
 {
     [AllowAnonymous]
